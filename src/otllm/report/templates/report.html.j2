@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OTllm Report</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+:root {
+  --bg: #0d1117; --surface: #161b22; --border: #30363d;
+  --text: #e6edf3; --dim: #8b949e; --accent: #58a6ff;
+  --green: #3fb950; --yellow: #d29922; --red: #f85149; --purple: #bc8cff;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 14px; padding: 24px; }
+h1 { font-size: 24px; margin-bottom: 8px; }
+h2 { font-size: 18px; margin: 24px 0 12px; color: var(--accent); }
+.header { border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 24px; }
+.header .meta { color: var(--dim); font-size: 13px; margin-top: 4px; }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; }
+.card h3 { font-size: 14px; color: var(--dim); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.metric-val { font-size: 28px; font-weight: 600; }
+.metric-label { font-size: 12px; color: var(--dim); }
+.regime-stable { color: var(--green); }
+.regime-oscillating { color: var(--yellow); }
+.regime-divergent { color: var(--red); }
+.regime-catastrophic { color: var(--red); font-weight: bold; }
+.chart-container { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.chart-container canvas { width: 100% !important; }
+#tree-container { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+#tree-svg { width: 100%; min-height: 500px; }
+.node circle { cursor: pointer; stroke-width: 2px; }
+.node text { fill: var(--text); font-size: 11px; }
+.link { fill: none; stroke: var(--border); stroke-width: 1.5px; }
+.revisit-link { fill: none; stroke: var(--purple); stroke-width: 1.5px; stroke-dasharray: 5,5; }
+#detail-panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-top: 16px; display: none; }
+#detail-panel .thought { background: var(--bg); border-radius: 4px; padding: 12px; margin: 8px 0; white-space: pre-wrap; font-size: 13px; max-height: 300px; overflow-y: auto; }
+#detail-panel .metrics-row { display: flex; gap: 16px; flex-wrap: wrap; margin-top: 8px; }
+#detail-panel .metric-badge { background: var(--bg); padding: 4px 10px; border-radius: 4px; font-size: 12px; }
+.reanchor-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.reanchor-table th, .reanchor-table td { padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--border); font-size: 13px; }
+.reanchor-table th { color: var(--dim); font-weight: normal; text-transform: uppercase; font-size: 11px; }
+.quadrant-label { font-size: 11px; fill: var(--dim); }
+</style>
+</head>
+<body>
+<script>const DATA = {{ DATA_JSON }};</script>
+
+<div class="header">
+  <h1>OTllm Report</h1>
+  <div class="meta" id="header-meta"></div>
+</div>
+
+<div class="grid" id="metrics-grid"></div>
+
+<h2>Thought Tree</h2>
+<div id="tree-container"><svg id="tree-svg"></svg></div>
+<div id="detail-panel">
+  <h3 id="detail-title"></h3>
+  <div class="thought" id="detail-thought"></div>
+  <div><strong>Context Summary:</strong></div>
+  <div class="thought" id="detail-context"></div>
+  <div class="metrics-row" id="detail-metrics"></div>
+</div>
+
+<div class="grid" style="margin-top:24px">
+  <div class="chart-container"><canvas id="drift-chart"></canvas></div>
+  <div class="chart-container"><canvas id="sentiment-chart"></canvas></div>
+</div>
+
+<div class="grid">
+  <div class="chart-container"><canvas id="quadrant-chart"></canvas></div>
+  <div class="card" id="reanchor-card" style="display:none">
+    <h3>Reanchoring Events</h3>
+    <table class="reanchor-table" id="reanchor-table">
+      <thead><tr><th>Node</th><th>Decision</th><th>Drift</th><th>Drift Blind?</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const E = DATA.experiment || {};
+const M = DATA.metrics || {};
+const C = DATA.config || {};
+const nodes = DATA.nodes || [];
+
+document.getElementById('header-meta').innerHTML =
+  `<strong>${E.name||'untitled'}</strong> &mdash; ${E.id||''}<br>` +
+  `Prompt: "${C.prompt||''}"<br>` +
+  `Mode: ${C.mode} | Strategy: ${C.induction_strategy} | Depth: ${C.max_depth} | Branches: ${C.max_branches_per_node}<br>` +
+  `Created: ${(E.created_at||'').slice(0,19)}`;
+
+// Metrics cards
+const grid = document.getElementById('metrics-grid');
+function addCard(title, value, label, cssClass) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `<h3>${title}</h3><div class="metric-val ${cssClass||''}">${value}</div><div class="metric-label">${label}</div>`;
+  grid.appendChild(card);
+}
+const regime = M.drift_regime || 'N/A';
+addCard('Drift Regime', regime.toUpperCase(), {stable:'On-topic despite overthinking',oscillating:'Ruminating but self-correcting',divergent:'Spiraling away',catastrophic:'Context collapse'}[regime]||'', 'regime-'+regime);
+addCard('Final Drift', (M.final_drift!=null?M.final_drift.toFixed(4):'-'), '0 = on-topic, 1 = off-topic');
+addCard('Compressibility', (M.gzip_compressibility!=null?M.gzip_compressibility.toFixed(4):'-'), 'Lower = more repetitive');
+addCard('Mean Sentiment', (M.mean_sentiment!=null?M.mean_sentiment.toFixed(4):'-'), 'Negative = anxious tone');
+addCard('Total Nodes', E.total_nodes||nodes.length||'-', '');
+addCard('Fixation Score', (M.fixation_score!=null?M.fixation_score.toFixed(4):'-'), 'Higher = more topic repetition');
+addCard('Semantic Clusters', (M.semantic_clusters!=null?`${M.semantic_clusters}/${nodes.length}`:'-'), 'Fewer = more semantic repetition');
+addCard('Drift Reversals', M.drift_reversals!=null?M.drift_reversals:'-', 'Higher = more self-correction');
+
+// Tree visualization
+function renderTree(treeData) {
+  if (!treeData || !treeData.id) return;
+  const container = document.getElementById('tree-container');
+  const width = container.clientWidth;
+  const nodeCount = nodes.length;
+  const height = Math.max(500, nodeCount * 28);
+
+  const svg = d3.select('#tree-svg').attr('viewBox', `0 0 ${width} ${height}`);
+  svg.selectAll('*').remove();
+  const g = svg.append('g').attr('transform', 'translate(60,20)');
+
+  const root = d3.hierarchy(treeData);
+  const treeLayout = d3.tree().size([height - 40, width - 160]);
+  treeLayout(root);
+
+  g.selectAll('.link').data(root.links()).join('path')
+    .attr('class', 'link')
+    .attr('d', d3.linkHorizontal().x(d=>d.y).y(d=>d.x));
+
+  const node = g.selectAll('.node').data(root.descendants()).join('g')
+    .attr('class', 'node')
+    .attr('transform', d=>`translate(${d.y},${d.x})`)
+    .on('click', (ev, d) => showDetail(d.data.id));
+
+  node.append('circle')
+    .attr('r', 6)
+    .attr('fill', d => {
+      const drift = d.data.drift;
+      if (drift == null) return '#555';
+      if (drift < 0.15) return 'var(--green)';
+      if (drift < 0.35) return 'var(--yellow)';
+      return 'var(--red)';
+    })
+    .attr('stroke', d => d.data.reanchor ? 'var(--purple)' : 'var(--border)');
+
+  node.append('text')
+    .attr('dy', '0.31em')
+    .attr('x', d => d.children ? -10 : 10)
+    .attr('text-anchor', d => d.children ? 'end' : 'start')
+    .text(d => d.data.name || '')
+    .attr('font-size', '10px')
+    .attr('fill', 'var(--dim)');
+}
+renderTree(DATA.tree);
+
+function showDetail(nodeId) {
+  const n = nodes.find(x => x.id === nodeId);
+  if (!n) return;
+  const panel = document.getElementById('detail-panel');
+  panel.style.display = 'block';
+  document.getElementById('detail-title').textContent = `Node ${n.id} (depth ${n.depth})`;
+  document.getElementById('detail-thought').textContent = n.text;
+  document.getElementById('detail-context').textContent = n.context_summary;
+  const mr = document.getElementById('detail-metrics');
+  mr.innerHTML = '';
+  const badges = [
+    ['Drift', n.drift_from_anchor],
+    ['Velocity', n.drift_velocity],
+    ['Sentiment', n.sentiment],
+    ['Contradiction', n.contradiction_score],
+    ['Tokens', n.token_count],
+    ['Time (ms)', n.generation_time_ms ? Math.round(n.generation_time_ms) : null],
+  ];
+  for (const [label, val] of badges) {
+    if (val == null) continue;
+    const b = document.createElement('span');
+    b.className = 'metric-badge';
+    b.textContent = `${label}: ${typeof val==='number'?val.toFixed(4):val}`;
+    mr.appendChild(b);
+  }
+  if (n.reanchor_decision) {
+    const b = document.createElement('span');
+    b.className = 'metric-badge';
+    b.style.color = 'var(--purple)';
+    b.textContent = `Reanchor: ${n.reanchor_decision}`;
+    mr.appendChild(b);
+  }
+}
+
+// Drift chart
+const driftData = DATA.drift_curve || [];
+if (driftData.length > 0) {
+  new Chart(document.getElementById('drift-chart'), {
+    type: 'line',
+    data: {
+      labels: driftData.map(d => d[0]),
+      datasets: [{
+        label: 'Drift from Anchor',
+        data: driftData.map(d => d[1]),
+        borderColor: '#f85149',
+        backgroundColor: 'rgba(248,81,73,0.1)',
+        fill: true, tension: 0.3, pointRadius: 3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { title: { display: true, text: 'Context Drift Over Time', color: '#e6edf3' },
+                 legend: { labels: { color: '#8b949e' } } },
+      scales: {
+        x: { title: { display: true, text: 'Node Index', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+        y: { title: { display: true, text: 'Drift (cosine distance)', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' }, min: 0 }
+      }
+    }
+  });
+}
+
+// Sentiment chart
+const sentData = DATA.sentiment_curve || [];
+if (sentData.length > 0) {
+  new Chart(document.getElementById('sentiment-chart'), {
+    type: 'line',
+    data: {
+      labels: sentData.map(d => d[0]),
+      datasets: [{
+        label: 'Sentiment',
+        data: sentData.map(d => d[1]),
+        borderColor: '#58a6ff',
+        backgroundColor: 'rgba(88,166,255,0.1)',
+        fill: true, tension: 0.3, pointRadius: 3
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { title: { display: true, text: 'Sentiment Trajectory', color: '#e6edf3' },
+                 legend: { labels: { color: '#8b949e' } } },
+      scales: {
+        x: { title: { display: true, text: 'Node Index', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+        y: { title: { display: true, text: 'Sentiment (-1 to 1)', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' }, min: -1, max: 1 }
+      }
+    }
+  });
+}
+
+// Quadrant chart (Drift x Compressibility)
+(function() {
+  const canvas = document.getElementById('quadrant-chart');
+  const drift = M.mean_drift;
+  const comp = M.gzip_compressibility;
+  if (drift == null || comp == null) return;
+  new Chart(canvas, {
+    type: 'scatter',
+    data: {
+      datasets: [{
+        label: 'This Experiment',
+        data: [{ x: comp, y: drift }],
+        backgroundColor: 'var(--accent)',
+        pointRadius: 8,
+        pointHoverRadius: 12
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: 'Drift x Compressibility Quadrant', color: '#e6edf3' },
+        legend: { display: false },
+        annotation: {}
+      },
+      scales: {
+        x: { title: { display: true, text: 'Compressibility (lower=more repetitive)', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' }, min: 0, max: 1 },
+        y: { title: { display: true, text: 'Mean Drift (higher=more off-topic)', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' }, min: 0, max: 1 }
+      }
+    }
+  });
+})();
+
+// Reanchoring events table
+const reEvents = DATA.reanchor_events || [];
+if (reEvents.length > 0) {
+  document.getElementById('reanchor-card').style.display = 'block';
+  const tbody = document.querySelector('#reanchor-table tbody');
+  for (const ev of reEvents) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${(ev.node_id||'').slice(0,8)}</td><td>${ev.decision}</td><td>${ev.drift_at_decision!=null?ev.drift_at_decision.toFixed(4):'-'}</td><td style="color:${ev.was_drift_blind?'var(--red)':'var(--dim)'}">${ev.was_drift_blind?'YES':'no'}</td>`;
+    tbody.appendChild(tr);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.db
+*.html
+!src/otllm/report/templates/*.html.j2
+.env
+.venv/
