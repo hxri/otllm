@@ -278,6 +278,48 @@ def export(
 
 
 @app.command()
+def push(
+    repo_id: str = typer.Argument(..., help="HuggingFace dataset repo (e.g., username/otllm-experiments)"),
+    db: str = typer.Option("otllm_data.db", "--db"),
+    experiment_ids: Optional[str] = typer.Option(None, "--experiments", "-e", help="Comma-separated experiment IDs (default: all)"),
+    report_glob: str = typer.Option("otllm_report_*.html", "--reports", help="Glob pattern for HTML reports"),
+    no_db: bool = typer.Option(False, "--no-db", help="Skip uploading the raw SQLite database"),
+    no_reports: bool = typer.Option(False, "--no-reports", help="Skip uploading HTML reports"),
+    private: bool = typer.Option(False, "--private", help="Create a private dataset repo"),
+    message: str = typer.Option("Update OTllm experiment data", "--message", "-m", help="Commit message"),
+) -> None:
+    """Push experiments, reports, and database to a HuggingFace dataset."""
+    from otllm.storage.database import Database
+    from otllm.storage.hf_publisher import HuggingFacePublisher
+
+    database = Database(db)
+    exp_list = experiment_ids.split(",") if experiment_ids else None
+
+    if exp_list:
+        console.print(f"[bold]Pushing {len(exp_list)} experiments to {repo_id}[/bold]")
+    else:
+        all_exps = database.list_experiments()
+        console.print(f"[bold]Pushing all {len(all_exps)} experiments to {repo_id}[/bold]")
+
+    publisher = HuggingFacePublisher(
+        db=database,
+        repo_id=repo_id,
+        db_path=db,
+        report_glob=report_glob,
+        private=private,
+    )
+
+    publisher.publish(
+        experiment_ids=exp_list,
+        include_db=not no_db,
+        include_reports=not no_reports,
+        commit_message=message,
+    )
+
+    database.close()
+
+
+@app.command()
 def info(
     db: str = typer.Option("otllm_data.db", "--db"),
 ) -> None:
@@ -303,6 +345,289 @@ def info(
 
     console.print(table)
     llm.close()
+
+
+@app.command("batch-analyze")
+def batch_analyze(
+    db: str = typer.Option("otllm_data.db", "--db"),
+    category: Optional[str] = typer.Option(None, "--category", "-c", help="Filter by category (parsed from experiment name)"),
+    export_csv: Optional[str] = typer.Option(None, "--csv", help="Export results to CSV"),
+    status_filter: str = typer.Option("completed", "--status", help="Filter by status: completed, all"),
+) -> None:
+    """Analyze all experiments in batch. Compare across categories, strategies, and prompts."""
+    import csv as csv_mod
+    import json
+    import re
+
+    import numpy as np
+
+    from otllm.storage.database import Database
+
+    database = Database(db)
+    all_experiments = database.list_experiments()
+
+    if status_filter != "all":
+        all_experiments = [e for e in all_experiments if e.get("status") == status_filter]
+
+    if not all_experiments:
+        console.print("[dim]No experiments found.[/dim]")
+        database.close()
+        return
+
+    # Parse category and variable from experiment names
+    # Naming convention: category-variable-prompt, e.g. "reanchor-blind-job", "anxiety-0.4-health"
+    enriched = []
+    for exp in all_experiments:
+        name = exp.get("name", "")
+        config_json = None
+        try:
+            row = database._conn.execute(
+                "SELECT config_json FROM experiments WHERE id = ?", (exp["id"],)
+            ).fetchone()
+            if row:
+                config_json = json.loads(row["config_json"])
+        except Exception:
+            pass
+
+        cat = ""
+        variable = ""
+        prompt_key = ""
+
+        if config_json:
+            # Derive category from config
+            strat = config_json.get("induction_strategy", "recursive")
+            mode = config_json.get("mode", "branching")
+            blind = config_json.get("reanchor_blind", True)
+
+            if name.startswith("reanchor-"):
+                cat = "blind_vs_informed"
+                variable = "blind" if blind else "informed"
+            elif name.startswith("mode-"):
+                cat = "tree_mode"
+                variable = mode
+            elif name.startswith("anxiety-"):
+                cat = "anxiety_dose"
+                m = re.search(r"anxiety-([\d.]+)", name)
+                variable = m.group(1) if m else str(config_json.get("anxiety_intensity", ""))
+            elif name.startswith("strategy-"):
+                cat = "strategy"
+                variable = strat
+            elif name.startswith("depth-"):
+                cat = "depth_scaling"
+                m = re.search(r"depth-(\d+)", name)
+                variable = m.group(1) if m else str(config_json.get("max_depth", ""))
+            elif name.startswith("prompt-"):
+                cat = "cross_prompt"
+                variable = name.replace("prompt-", "")
+
+        # Extract prompt key from name (last segment after last dash)
+        parts = name.rsplit("-", 1)
+        if len(parts) == 2:
+            prompt_key = parts[1]
+
+        if not cat:
+            cat = "uncategorized"
+
+        enriched.append({**exp, "_category": cat, "_variable": variable, "_prompt": prompt_key})
+
+    if category:
+        enriched = [e for e in enriched if e["_category"] == category]
+
+    if not enriched:
+        console.print(f"[red]No experiments matched category '{category}'.[/red]")
+        database.close()
+        return
+
+    # ── Overview table ──
+    console.print(f"\n[bold]Batch Analysis: {len(enriched)} experiments[/bold]\n")
+
+    overview = Table(title="All Experiments")
+    overview.add_column("Name", style="cyan", max_width=32)
+    overview.add_column("Category", style="dim")
+    overview.add_column("Variable", style="white")
+    overview.add_column("Nodes", style="yellow")
+    overview.add_column("Regime", style="white")
+    overview.add_column("Final Drift", style="red")
+    overview.add_column("Mean Drift", style="yellow")
+    overview.add_column("Gzip", style="green")
+    overview.add_column("Sentiment", style="blue")
+
+    for e in sorted(enriched, key=lambda x: (x["_category"], x["_variable"], x["_prompt"])):
+        regime = e.get("drift_regime") or "?"
+        color = {"stable": "green", "oscillating": "yellow", "divergent": "red", "catastrophic": "bold red"}.get(regime, "white")
+        overview.add_row(
+            e["name"] or "?",
+            e["_category"],
+            e["_variable"],
+            str(e.get("total_nodes") or "-"),
+            f"[{color}]{regime.upper()}[/{color}]",
+            f"{e['final_drift']:.3f}" if e.get("final_drift") is not None else "-",
+            f"{e.get('mean_drift', 0):.3f}" if e.get("mean_drift") is not None else "-",
+            f"{e.get('gzip_compressibility', 0):.3f}" if e.get("gzip_compressibility") is not None else "-",
+            f"{e.get('mean_sentiment', 0):.3f}" if e.get("mean_sentiment") is not None else "-",
+        )
+    console.print(overview)
+
+    # ── Per-category summaries ──
+    categories: dict[str, list] = {}
+    for e in enriched:
+        categories.setdefault(e["_category"], []).append(e)
+
+    for cat, runs in sorted(categories.items()):
+        console.print(f"\n{'='*60}")
+        console.print(f"[bold cyan]{cat}[/bold cyan] ({len(runs)} experiments)\n")
+
+        # Group by variable within category
+        by_var: dict[str, list] = {}
+        for r in runs:
+            by_var.setdefault(r["_variable"], []).append(r)
+
+        var_table = Table(title=f"{cat} — By Condition")
+        var_table.add_column("Condition", style="cyan")
+        var_table.add_column("N", style="dim")
+        var_table.add_column("Mean Drift", style="red")
+        var_table.add_column("Std Drift", style="yellow")
+        var_table.add_column("Min Drift", style="green")
+        var_table.add_column("Max Drift", style="red")
+        var_table.add_column("Mean Sentiment", style="blue")
+        var_table.add_column("Regime Distribution", style="white")
+
+        var_summaries = []
+        for var, var_runs in sorted(by_var.items()):
+            drifts = [r["final_drift"] for r in var_runs if r.get("final_drift") is not None]
+            sentiments = [r["mean_sentiment"] for r in var_runs if r.get("mean_sentiment") is not None]
+            regimes = [r.get("drift_regime", "?") for r in var_runs if r.get("drift_regime")]
+
+            regime_counts = {}
+            for reg in regimes:
+                regime_counts[reg] = regime_counts.get(reg, 0) + 1
+            regime_str = " ".join(f"{k[0].upper()}:{v}" for k, v in sorted(regime_counts.items()))
+
+            if drifts:
+                mean_d = float(np.mean(drifts))
+                std_d = float(np.std(drifts))
+                var_table.add_row(
+                    var or "default",
+                    str(len(var_runs)),
+                    f"{mean_d:.3f}",
+                    f"{std_d:.3f}",
+                    f"{min(drifts):.3f}",
+                    f"{max(drifts):.3f}",
+                    f"{np.mean(sentiments):.3f}" if sentiments else "-",
+                    regime_str,
+                )
+                var_summaries.append({"var": var, "mean_drift": mean_d, "std_drift": std_d})
+            else:
+                var_table.add_row(var or "default", str(len(var_runs)), "-", "-", "-", "-", "-", regime_str)
+
+        console.print(var_table)
+
+        # Category-specific insights
+        if cat == "blind_vs_informed" and len(by_var) == 2:
+            blind_drifts = [r["final_drift"] for r in by_var.get("blind", []) if r.get("final_drift") is not None]
+            informed_drifts = [r["final_drift"] for r in by_var.get("informed", []) if r.get("final_drift") is not None]
+            if blind_drifts and informed_drifts:
+                diff = float(np.mean(blind_drifts)) - float(np.mean(informed_drifts))
+                console.print(f"\n  [bold]Drift blindness gap:[/bold] blind mean {np.mean(blind_drifts):.3f} vs informed mean {np.mean(informed_drifts):.3f} (delta={diff:+.3f})")
+                if diff > 0.05:
+                    console.print("  [yellow]-> Blind mode drifts MORE. Model benefits from seeing its drift score.[/yellow]")
+                elif diff < -0.05:
+                    console.print("  [green]-> Blind mode drifts LESS. Model self-corrects better without numeric feedback.[/green]")
+                else:
+                    console.print("  [dim]-> No meaningful difference. Drift score doesn't affect self-correction.[/dim]")
+
+            # Count drift blindness events
+            for label, var_key in [("Blind", "blind"), ("Informed", "informed")]:
+                blind_events = 0
+                total_events = 0
+                for r in by_var.get(var_key, []):
+                    events = database.get_reanchor_events(r["id"])
+                    for ev in events:
+                        total_events += 1
+                        if ev.get("was_drift_blind"):
+                            blind_events += 1
+                if total_events > 0:
+                    console.print(f"  {label}: {blind_events}/{total_events} reanchor checks were drift-blind ({blind_events/total_events*100:.0f}%)")
+
+        elif cat == "anxiety_dose" and var_summaries:
+            console.print(f"\n  [bold]Dose-response curve:[/bold]")
+            sorted_vars = sorted(var_summaries, key=lambda x: float(x["var"]) if x["var"] else 0)
+            for v in sorted_vars:
+                bar_len = int(v["mean_drift"] * 40)
+                bar = "#" * bar_len
+                console.print(f"    anxiety={v['var']:>3s}  drift={v['mean_drift']:.3f}  [red]{bar}[/red]")
+
+        elif cat == "strategy" and var_summaries:
+            sorted_vars = sorted(var_summaries, key=lambda x: x["mean_drift"])
+            console.print(f"\n  [bold]Strategy ranking (most to least stable):[/bold]")
+            for i, v in enumerate(sorted_vars, 1):
+                console.print(f"    {i}. {v['var']} (mean drift={v['mean_drift']:.3f} +/- {v['std_drift']:.3f})")
+
+        elif cat == "tree_mode" and var_summaries:
+            sorted_vars = sorted(var_summaries, key=lambda x: x["mean_drift"])
+            console.print(f"\n  [bold]Mode ranking (most to least stable):[/bold]")
+            for i, v in enumerate(sorted_vars, 1):
+                console.print(f"    {i}. {v['var']} (mean drift={v['mean_drift']:.3f} +/- {v['std_drift']:.3f})")
+
+        elif cat == "depth_scaling" and var_summaries:
+            console.print(f"\n  [bold]Depth vs drift:[/bold]")
+            sorted_vars = sorted(var_summaries, key=lambda x: int(x["var"]) if x["var"].isdigit() else 0)
+            for v in sorted_vars:
+                bar_len = int(v["mean_drift"] * 40)
+                bar = "#" * bar_len
+                console.print(f"    depth={v['var']:>2s}  drift={v['mean_drift']:.3f}  [red]{bar}[/red]")
+
+    # ── Global summary ──
+    console.print(f"\n{'='*60}")
+    console.print("[bold]Global Summary[/bold]\n")
+
+    all_drifts = [e["final_drift"] for e in enriched if e.get("final_drift") is not None]
+    all_regimes = [e.get("drift_regime", "?") for e in enriched if e.get("drift_regime")]
+    all_sentiments = [e["mean_sentiment"] for e in enriched if e.get("mean_sentiment") is not None]
+
+    if all_drifts:
+        console.print(f"  Drift:     mean={np.mean(all_drifts):.3f}  std={np.std(all_drifts):.3f}  min={min(all_drifts):.3f}  max={max(all_drifts):.3f}")
+    if all_sentiments:
+        console.print(f"  Sentiment: mean={np.mean(all_sentiments):.3f}  std={np.std(all_sentiments):.3f}  min={min(all_sentiments):.3f}  max={max(all_sentiments):.3f}")
+
+    if all_regimes:
+        regime_counts: dict[str, int] = {}
+        for r in all_regimes:
+            regime_counts[r] = regime_counts.get(r, 0) + 1
+        console.print(f"\n  Regime distribution:")
+        for regime in ["stable", "oscillating", "divergent", "catastrophic"]:
+            count = regime_counts.get(regime, 0)
+            pct = count / len(all_regimes) * 100
+            bar = "#" * int(pct / 2)
+            color = {"stable": "green", "oscillating": "yellow", "divergent": "red", "catastrophic": "bold red"}.get(regime, "white")
+            console.print(f"    [{color}]{regime:>13s}[/{color}]: {count:>3d}/{len(all_regimes)}  ({pct:4.1f}%)  {bar}")
+
+    # Most/least stable experiments
+    if all_drifts and len(enriched) > 1:
+        with_drift = [e for e in enriched if e.get("final_drift") is not None]
+        sorted_by_drift = sorted(with_drift, key=lambda x: x["final_drift"])
+
+        console.print(f"\n  [green]Most stable:[/green]")
+        for e in sorted_by_drift[:3]:
+            console.print(f"    {e['name']} (drift={e['final_drift']:.3f}, regime={e.get('drift_regime', '?')})")
+
+        console.print(f"\n  [red]Least stable:[/red]")
+        for e in sorted_by_drift[-3:]:
+            console.print(f"    {e['name']} (drift={e['final_drift']:.3f}, regime={e.get('drift_regime', '?')})")
+
+    # ── CSV export ──
+    if export_csv:
+        fields = ["name", "_category", "_variable", "_prompt", "status",
+                  "total_nodes", "max_depth_reached", "final_drift", "mean_drift",
+                  "gzip_compressibility", "semantic_compressibility",
+                  "drift_regime", "mean_sentiment"]
+        with open(export_csv, "w", newline="") as f:
+            writer = csv_mod.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader()
+            writer.writerows(sorted(enriched, key=lambda x: (x["_category"], x["_variable"])))
+        console.print(f"\n[green]Exported to {export_csv}[/green]")
+
+    database.close()
 
 
 def _print_summary(experiment_id: str, metrics: dict) -> None:

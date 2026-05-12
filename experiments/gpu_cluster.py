@@ -24,6 +24,8 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from rich.console import Console
+from rich.live import Live
+from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 console = Console()
@@ -192,42 +194,60 @@ def run_parallel(
     results = []
     total = len(tasks)
     elapsed_times: List[float] = []
+    n_gpus = len(gpu_urls)
 
-    console.print(f"[bold]Running {total} experiments across {len(gpu_urls)} GPUs[/bold]\n")
+    progress = Progress(
+        SpinnerColumn(),
+        TextColumn("[bold]{task.description}"),
+        BarColumn(bar_width=40),
+        MofNCompleteColumn(),
+        TextColumn("[dim]elapsed[/dim]"),
+        TimeElapsedColumn(),
+        TextColumn("[dim]ETA[/dim]"),
+        TextColumn("[cyan]{task.fields[eta]}[/cyan]"),
+        console=console,
+    )
 
-    batch_start = time.time()
+    with progress:
+        task_id = progress.add_task(
+            f"Running on {n_gpus} GPUs", total=total, eta="estimating...",
+        )
 
-    with ProcessPoolExecutor(max_workers=len(gpu_urls)) as executor:
-        futures = {executor.submit(_worker, t): t[0].name for t in tasks}
+        with ProcessPoolExecutor(max_workers=n_gpus) as executor:
+            futures = {executor.submit(_worker, t): t[0].name for t in tasks}
 
-        for future in as_completed(futures):
-            name = futures[future]
-            result = future.result()
-            results.append(result)
-            elapsed_times.append(result.get("elapsed", 0))
+            for future in as_completed(futures):
+                name = futures[future]
+                result = future.result()
+                results.append(result)
+                elapsed_times.append(result.get("elapsed", 0))
 
-            done = len(results)
-            avg_time = sum(elapsed_times) / len(elapsed_times)
-            remaining_experiments = total - done
-            remaining_parallel = remaining_experiments / len(gpu_urls)
-            eta_seconds = remaining_parallel * avg_time
-            eta_str = _format_eta(eta_seconds)
+                done = len(results)
+                avg_time = sum(elapsed_times) / len(elapsed_times)
+                remaining_parallel = (total - done) / n_gpus
+                eta_seconds = remaining_parallel * avg_time
+                eta_str = _format_eta(eta_seconds)
 
-            if result["status"] == "ok":
-                console.print(
-                    f"[cyan][{done}/{total}][/cyan] {name} -> "
-                    f"{result['drift_regime'].upper()} drift={result.get('final_drift', 0):.3f} "
-                    f"({result['elapsed']:.0f}s on {result['gpu']}) "
-                    f"[dim]ETA: {eta_str}[/dim]"
-                )
-            else:
-                console.print(
-                    f"[red][{done}/{total}] {name} FAILED: {result.get('error', '?')}[/red] "
-                    f"[dim]ETA: {eta_str}[/dim]"
-                )
+                progress.update(task_id, advance=1, eta=eta_str)
 
-    total_elapsed = time.time() - batch_start
-    console.print(f"\n[bold]Batch completed in {_format_eta(total_elapsed)}[/bold]")
+                if result["status"] == "ok":
+                    progress.console.print(
+                        f"  [cyan][{done}/{total}][/cyan] {name} -> "
+                        f"{result['drift_regime'].upper()} drift={result.get('final_drift', 0):.3f} "
+                        f"({result['elapsed']:.0f}s on {result['gpu']})"
+                    )
+                else:
+                    progress.console.print(
+                        f"  [red][{done}/{total}] {name} FAILED: {result.get('error', '?')}[/red]"
+                    )
+
+    total_elapsed = sum(elapsed_times)
+    wall_time = total_elapsed / max(n_gpus, 1)
+    console.print(
+        f"\n[bold]Batch completed:[/bold] {total} experiments, "
+        f"total compute {_format_eta(total_elapsed)}, "
+        f"wall time ~{_format_eta(wall_time)}"
+    )
 
     return results
 
