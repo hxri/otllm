@@ -4,7 +4,6 @@ __pycache__/
 dist/
 build/
 .eggs/
-*.db
 *.html
 !src/otllm/report/templates/*.html.j2
 .env
