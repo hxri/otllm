@@ -692,3 +692,12 @@ Spawn multiple inner voices (critic, worrier, optimist, catastrophizer) as separ
 
 ### Termination suppression
 When the model tries to resolve or conclude, override it and force continued elaboration. Study what happens when the model is denied resolution.
+
+### How to run
+```
+bash experiments/launch_vllm_servers.sh 4
+python experiments/gpu_cluster.py --gpus 4 --db otllm_79.db --exp-name fixed_79 --resume --embedder-device cpu
+
+# Stopping the vLLM servers
+bash experiments/launch_vllm_servers.sh stop
+```

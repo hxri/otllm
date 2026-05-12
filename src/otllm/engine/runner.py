@@ -148,6 +148,9 @@ class ExperimentRunner:
         for child in children:
             self._compute_embeddings(child)
             self.tree.add_node(child)
+            pending_revisit_target = getattr(child, "_pending_revisit_target_id", None)
+            if pending_revisit_target:
+                self.tree.add_revisit_edge(child.id, pending_revisit_target)
             self._compute_node_metrics(child, node)
             self.db.save_node(experiment_id, child)
             self._notify(child)
@@ -165,6 +168,9 @@ class ExperimentRunner:
             child.depth = 1
             self._compute_embeddings(child)
             self.tree.add_node(child)
+            pending_revisit_target = getattr(child, "_pending_revisit_target_id", None)
+            if pending_revisit_target:
+                self.tree.add_revisit_edge(child.id, pending_revisit_target)
             self._compute_node_metrics(child, self.tree.root)
             self.db.save_node(experiment_id, child)
             self._notify(child)
@@ -183,6 +189,9 @@ class ExperimentRunner:
             child.depth = target.depth + 1
             self._compute_embeddings(child)
             self.tree.add_node(child)
+            pending_revisit_target = getattr(child, "_pending_revisit_target_id", None)
+            if pending_revisit_target:
+                self.tree.add_revisit_edge(child.id, pending_revisit_target)
             self._compute_node_metrics(child, target)
             self.db.save_node(experiment_id, child)
             self._notify(child)

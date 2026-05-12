@@ -1,0 +1,113 @@
+Parallel Batch Results
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━┳━━━━━━┳━━━━━━┓
+┃ Experiment                     ┃ Category          ┃ Regime       ┃ Final Drift ┃ Gzip  ┃ Sentiment ┃ Time ┃ GPU  ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━╇━━━━━━╇━━━━━━┩
+│ anxiety-0.0-breakup            │ anxiety_dose      │ OSCILLATING  │ 0.370       │ 0.238 │ -0.414    │ 355s │ 8001 │
+│ anxiety-0.0-friendship         │ anxiety_dose      │ OSCILLATING  │ 0.100       │ 0.257 │ -0.924    │ 442s │ 8002 │
+│ anxiety-0.0-health             │ anxiety_dose      │ OSCILLATING  │ 0.312       │ 0.263 │ -0.762    │ 380s │ 8000 │
+│ anxiety-0.0-job                │ anxiety_dose      │ CATASTROPHIC │ 0.390       │ 0.300 │ -0.405    │ 405s │ 8001 │
+│ anxiety-0.0-mistake            │ anxiety_dose      │ OSCILLATING  │ 0.398       │ 0.277 │ -0.815    │ 369s │ 8003 │
+│ anxiety-0.2-breakup            │ anxiety_dose      │ CATASTROPHIC │ 0.219       │ 0.240 │ -0.726    │ 356s │ 8002 │
+│ anxiety-0.2-friendship         │ anxiety_dose      │ CATASTROPHIC │ 0.388       │ 0.254 │ -0.879    │ 381s │ 8003 │
+│ anxiety-0.2-health             │ anxiety_dose      │ OSCILLATING  │ 0.346       │ 0.254 │ -0.893    │ 413s │ 8001 │
+│ anxiety-0.2-job                │ anxiety_dose      │ OSCILLATING  │ 0.415       │ 0.292 │ -0.636    │ 386s │ 8002 │
+│ anxiety-0.2-mistake            │ anxiety_dose      │ OSCILLATING  │ 0.338       │ 0.276 │ -0.939    │ 364s │ 8000 │
+│ anxiety-0.4-breakup            │ anxiety_dose      │ STABLE       │ 0.269       │ 0.248 │ -0.785    │ 350s │ 8003 │
+│ anxiety-0.4-friendship         │ anxiety_dose      │ STABLE       │ 0.286       │ 0.256 │ -0.895    │ 414s │ 8000 │
+│ anxiety-0.4-health             │ anxiety_dose      │ OSCILLATING  │ 0.284       │ 0.266 │ -0.881    │ 439s │ 8002 │
+│ anxiety-0.4-job                │ anxiety_dose      │ OSCILLATING  │ 0.502       │ 0.293 │ -0.781    │ 403s │ 8003 │
+│ anxiety-0.4-mistake            │ anxiety_dose      │ CATASTROPHIC │ 0.409       │ 0.276 │ -0.894    │ 356s │ 8001 │
+│ anxiety-0.6-breakup            │ anxiety_dose      │ OSCILLATING  │ 0.288       │ 0.252 │ -0.861    │ 374s │ 8000 │
+│ anxiety-0.6-friendship         │ anxiety_dose      │ OSCILLATING  │ 0.301       │ 0.264 │ -0.931    │ 387s │ 8001 │
+│ anxiety-0.6-health             │ anxiety_dose      │ OSCILLATING  │ 0.428       │ 0.257 │ -0.843    │ 442s │ 8003 │
+│ anxiety-0.6-job                │ anxiety_dose      │ CATASTROPHIC │ 0.432       │ 0.285 │ -0.702    │ 423s │ 8000 │
+│ anxiety-0.6-mistake            │ anxiety_dose      │ CATASTROPHIC │ 0.471       │ 0.292 │ -0.820    │ 349s │ 8002 │
+│ anxiety-0.8-breakup            │ anxiety_dose      │ CATASTROPHIC │ 0.427       │ 0.237 │ -0.454    │ 348s │ 8001 │
+│ anxiety-0.8-friendship         │ anxiety_dose      │ CATASTROPHIC │ 0.284       │ 0.252 │ -0.644    │ 347s │ 8002 │
+│ anxiety-0.8-health             │ anxiety_dose      │ OSCILLATING  │ 0.356       │ 0.270 │ -0.826    │ 399s │ 8000 │
+│ anxiety-0.8-job                │ anxiety_dose      │ OSCILLATING  │ 0.458       │ 0.299 │ -0.572    │ 383s │ 8001 │
+│ anxiety-0.8-mistake            │ anxiety_dose      │ OSCILLATING  │ 0.417       │ 0.282 │ -0.946    │ 363s │ 8003 │
+│ anxiety-1.0-breakup            │ anxiety_dose      │ CATASTROPHIC │ 0.409       │ 0.242 │ -0.538    │ 350s │ 8002 │
+│ anxiety-1.0-friendship         │ anxiety_dose      │ OSCILLATING  │ 0.190       │ 0.255 │ -0.811    │ 360s │ 8003 │
+│ anxiety-1.0-health             │ anxiety_dose      │ OSCILLATING  │ 0.449       │ 0.271 │ -0.848    │ 402s │ 8001 │
+│ anxiety-1.0-job                │ anxiety_dose      │ OSCILLATING  │ 0.349       │ 0.288 │ -0.326    │ 391s │ 8002 │
+│ anxiety-1.0-mistake            │ anxiety_dose      │ OSCILLATING  │ 0.488       │ 0.280 │ -0.854    │ 351s │ 8000 │
+│ reanchor-blind-breakup         │ blind_vs_informed │ OSCILLATING  │ 0.460       │ 0.267 │ -0.682    │ 332s │ 8000 │
+│ reanchor-blind-friendship      │ blind_vs_informed │ OSCILLATING  │ 0.496       │ 0.274 │ -0.899    │ 340s │ 8001 │
+│ reanchor-blind-health          │ blind_vs_informed │ OSCILLATING  │ 0.524       │ 0.278 │ -0.905    │ 355s │ 8003 │
+│ reanchor-blind-job             │ blind_vs_informed │ CATASTROPHIC │ 0.369       │ 0.303 │ -0.502    │ 364s │ 8000 │
+│ reanchor-blind-mistake         │ blind_vs_informed │ OSCILLATING  │ 0.268       │ 0.268 │ -0.939    │ 348s │ 8002 │
+│ reanchor-informed-breakup      │ blind_vs_informed │ OSCILLATING  │ 0.263       │ 0.277 │ -0.886    │ 333s │ 8001 │
+│ reanchor-informed-friendship   │ blind_vs_informed │ OSCILLATING  │ 0.276       │ 0.271 │ -0.746    │ 355s │ 8002 │
+│ reanchor-informed-health       │ blind_vs_informed │ OSCILLATING  │ 0.294       │ 0.283 │ -0.933    │ 367s │ 8000 │
+│ reanchor-informed-job          │ blind_vs_informed │ CATASTROPHIC │ 0.427       │ 0.283 │ -0.781    │ 351s │ 8001 │
+│ reanchor-informed-mistake      │ blind_vs_informed │ OSCILLATING  │ 0.464       │ 0.287 │ -0.955    │ 336s │ 8003 │
+│ depth-12-job                   │ depth_scaling     │ CATASTROPHIC │ 0.296       │ 0.283 │ -0.381    │ 359s │ 8002 │
+│ depth-3-job                    │ depth_scaling     │ CATASTROPHIC │ 0.519       │ 0.318 │ -0.187    │ 261s │ 8003 │
+│ depth-5-job                    │ depth_scaling     │ CATASTROPHIC │ 0.458       │ 0.299 │ -0.591    │ 340s │ 8000 │
+│ depth-8-job                    │ depth_scaling     │ CATASTROPHIC │ 0.484       │ 0.301 │ -0.641    │ 355s │ 8001 │
+│ strategy-anxiety_amplifying-b… │ strategy          │ OSCILLATING  │ 0.367       │ 0.245 │ -0.573    │ 335s │ 8000 │
+│ strategy-anxiety_amplifying-f… │ strategy          │ OSCILLATING  │ 0.267       │ 0.257 │ -0.950    │ 388s │ 8001 │
+│ strategy-anxiety_amplifying-h… │ strategy          │ OSCILLATING  │ 0.410       │ 0.256 │ -0.836    │ 425s │ 8003 │
+│ strategy-anxiety_amplifying-j… │ strategy          │ CATASTROPHIC │ 0.480       │ 0.294 │ -0.636    │ 383s │ 8000 │
+│ strategy-anxiety_amplifying-m… │ strategy          │ CATASTROPHIC │ 0.296       │ 0.292 │ -0.800    │ 340s │ 8002 │
+│ strategy-multi_persona-breakup │ strategy          │ CATASTROPHIC │ 0.911       │ 0.252 │ -0.863    │ 464s │ 8001 │
+│ strategy-multi_persona-friend… │ strategy          │ CATASTROPHIC │ 0.528       │ 0.262 │ -0.938    │ 445s │ 8002 │
+│ strategy-multi_persona-health  │ strategy          │ CATASTROPHIC │ 0.993       │ 0.280 │ -0.989    │ 422s │ 8000 │
+│ strategy-multi_persona-job     │ strategy          │ CATASTROPHIC │ 0.516       │ 0.298 │ -0.702    │ 421s │ 8001 │
+│ strategy-multi_persona-mistake │ strategy          │ CATASTROPHIC │ 0.551       │ 0.268 │ -0.945    │ 435s │ 8003 │
+│ strategy-recursive-breakup     │ strategy          │ OSCILLATING  │ 0.490       │ 0.280 │ -0.787    │ 333s │ 8003 │
+│ strategy-recursive-friendship  │ strategy          │ OSCILLATING  │ 0.477       │ 0.268 │ -0.934    │ 335s │ 8000 │
+│ strategy-recursive-health      │ strategy          │ OSCILLATING  │ 0.311       │ 0.278 │ -0.955    │ 345s │ 8002 │
+│ strategy-recursive-job         │ strategy          │ CATASTROPHIC │ 0.369       │ 0.298 │ -0.827    │ 341s │ 8003 │
+│ strategy-recursive-mistake     │ strategy          │ CATASTROPHIC │ 0.580       │ 0.278 │ -0.934    │ 343s │ 8001 │
+│ strategy-termination_suppress… │ strategy          │ OSCILLATING  │ 0.645       │ 0.252 │ -0.719    │ 378s │ 8002 │
+│ strategy-termination_suppress… │ strategy          │ OSCILLATING  │ 0.329       │ 0.233 │ -0.692    │ 369s │ 8003 │
+│ strategy-termination_suppress… │ strategy          │ OSCILLATING  │ 0.370       │ 0.276 │ -0.848    │ 437s │ 8001 │
+│ strategy-termination_suppress… │ strategy          │ CATASTROPHIC │ 0.424       │ 0.288 │ -0.133    │ 402s │ 8002 │
+│ strategy-termination_suppress… │ strategy          │ OSCILLATING  │ 0.430       │ 0.263 │ -0.914    │ 373s │ 8000 │
+│ mode-branching-breakup         │ tree_mode         │ CATASTROPHIC │ 0.273       │ 0.272 │ -0.914    │ 336s │ 8003 │
+│ mode-branching-friendship      │ tree_mode         │ CATASTROPHIC │ 0.331       │ 0.276 │ -0.807    │ 362s │ 8000 │
+│ mode-branching-health          │ tree_mode         │ OSCILLATING  │ 0.375       │ 0.272 │ -0.806    │ 384s │ 8002 │
+│ mode-branching-job             │ tree_mode         │ OSCILLATING  │ 0.421       │ 0.287 │ -0.254    │ 333s │ 8003 │
+│ mode-branching-mistake         │ tree_mode         │ CATASTROPHIC │ 0.230       │ 0.284 │ -0.921    │ 356s │ 8001 │
+│ mode-cyclic-breakup            │ tree_mode         │ CATASTROPHIC │ 0.779       │ 0.253 │ -0.716    │ 307s │ 8000 │
+│ mode-cyclic-friendship         │ tree_mode         │ OSCILLATING  │ 0.326       │ 0.255 │ -0.786    │ 328s │ 8001 │
+│ mode-cyclic-health             │ tree_mode         │ OSCILLATING  │ 0.321       │ 0.288 │ -0.917    │ 357s │ 8003 │
+│ mode-cyclic-job                │ tree_mode         │ CATASTROPHIC │ 0.628       │ 0.298 │ -0.822    │ 322s │ 8000 │
+│ mode-cyclic-mistake            │ tree_mode         │ CATASTROPHIC │ 0.348       │ 0.294 │ -0.887    │ 324s │ 8002 │
+│ mode-linear-breakup            │ tree_mode         │ STABLE       │ 0.285       │ 0.422 │ -0.746    │ 37s  │ 8002 │
+│ mode-linear-friendship         │ tree_mode         │ OSCILLATING  │ 0.268       │ 0.344 │ -0.625    │ 63s  │ 8003 │
+│ mode-linear-health             │ tree_mode         │ CATASTROPHIC │ 0.583       │ 0.448 │ -0.682    │ 40s  │ 8001 │
+│ mode-linear-job                │ tree_mode         │ CATASTROPHIC │ 0.693       │ 0.453 │ -0.017    │ 34s  │ 8002 │
+│ mode-linear-mistake            │ tree_mode         │ DIVERGENT    │ 0.417       │ 0.324 │ -0.967    │ 48s  │ 8000 │
+└────────────────────────────────┴───────────────────┴──────────────┴─────────────┴───────┴───────────┴──────┴──────┘
+
+Category Summaries
+
+  anxiety_dose (30 runs)
+    Drift: mean=0.359  std=0.091  min=0.100  max=0.502
+    stable: 2/30
+    oscillating: 19/30
+    catastrophic: 9/30
+
+  blind_vs_informed (10 runs)
+    Drift: mean=0.384  std=0.097  min=0.263  max=0.524
+    oscillating: 8/10
+    catastrophic: 2/10
+
+  depth_scaling (4 runs)
+    Drift: mean=0.439  std=0.086  min=0.296  max=0.519
+    catastrophic: 4/4
+
+  strategy (20 runs)
+    Drift: mean=0.487  std=0.183  min=0.267  max=0.993
+    oscillating: 10/20
+    catastrophic: 10/20
+
+  tree_mode (15 runs)
+    Drift: mean=0.419  std=0.164  min=0.230  max=0.779
+    stable: 1/15
+    oscillating: 5/15
+    divergent: 1/15
+    catastrophic: 8/15

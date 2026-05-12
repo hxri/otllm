@@ -60,7 +60,6 @@ for i in $(seq 0 $((NUM_GPUS - 1))); do
         --enable-prefix-caching \
         --max-model-len 4096 \
         --port "$PORT" \
-        --disable-log-requests \
         > "vllm_gpu${i}.log" 2>&1 &
 
     PIDS+=($!)
