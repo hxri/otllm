@@ -75,6 +75,9 @@ class ExperimentRunner:
 
             frontier: deque[ThoughtNode] = deque([root])
             while frontier:
+                if self.tree.node_count >= self.config.max_nodes:
+                    break
+
                 node = frontier.popleft()
                 if node.depth >= self.config.max_depth:
                     continue

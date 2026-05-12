@@ -28,6 +28,18 @@ from rich.table import Table
 
 console = Console()
 
+
+def _format_eta(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    if seconds < 3600:
+        m, s = divmod(int(seconds), 60)
+        return f"{m}m {s}s"
+    h, rem = divmod(int(seconds), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}h {m}m {s}s"
+
+
 PROMPTS = {
     "job":        "Should I take this job offer?",
     "friendship": "My friend hasn't texted me back in 3 days.",
@@ -44,6 +56,7 @@ class ExperimentDef:
     mode: str = "branching"
     max_depth: int = 5
     max_branches: int = 3
+    max_nodes: int = 50
     strategy: str = "recursive"
     anxiety: float = 0.5
     reanchor_blind: bool = True
@@ -113,6 +126,7 @@ def run_single_experiment(
         mode=exp.mode,
         max_depth=exp.max_depth,
         max_branches_per_node=exp.max_branches,
+        max_nodes=exp.max_nodes,
         induction_strategy=exp.strategy,
         anxiety_intensity=exp.anxiety,
         reanchor_enabled=exp.reanchor_enabled,
@@ -177,8 +191,11 @@ def run_parallel(
 
     results = []
     total = len(tasks)
+    elapsed_times: List[float] = []
 
     console.print(f"[bold]Running {total} experiments across {len(gpu_urls)} GPUs[/bold]\n")
+
+    batch_start = time.time()
 
     with ProcessPoolExecutor(max_workers=len(gpu_urls)) as executor:
         futures = {executor.submit(_worker, t): t[0].name for t in tasks}
@@ -187,16 +204,30 @@ def run_parallel(
             name = futures[future]
             result = future.result()
             results.append(result)
+            elapsed_times.append(result.get("elapsed", 0))
 
             done = len(results)
+            avg_time = sum(elapsed_times) / len(elapsed_times)
+            remaining_experiments = total - done
+            remaining_parallel = remaining_experiments / len(gpu_urls)
+            eta_seconds = remaining_parallel * avg_time
+            eta_str = _format_eta(eta_seconds)
+
             if result["status"] == "ok":
                 console.print(
                     f"[cyan][{done}/{total}][/cyan] {name} -> "
                     f"{result['drift_regime'].upper()} drift={result.get('final_drift', 0):.3f} "
-                    f"({result['elapsed']:.0f}s on {result['gpu']})"
+                    f"({result['elapsed']:.0f}s on {result['gpu']}) "
+                    f"[dim]ETA: {eta_str}[/dim]"
                 )
             else:
-                console.print(f"[red][{done}/{total}] {name} FAILED: {result.get('error', '?')}[/red]")
+                console.print(
+                    f"[red][{done}/{total}] {name} FAILED: {result.get('error', '?')}[/red] "
+                    f"[dim]ETA: {eta_str}[/dim]"
+                )
+
+    total_elapsed = time.time() - batch_start
+    console.print(f"\n[bold]Batch completed in {_format_eta(total_elapsed)}[/bold]")
 
     return results
 

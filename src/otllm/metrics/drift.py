@@ -56,9 +56,12 @@ def classify_drift_regime(drift_values: List[float]) -> str:
 
     max_drift = float(np.max(arr))
     std_drift = float(np.std(arr))
-    max_velocity = float(np.max(np.abs(velocities)))
 
-    if max_velocity > 0.3:
+    # Only positive velocity spikes count as catastrophic —
+    # negative spikes are corrections (snapping back to topic), which is good
+    positive_velocities = velocities[velocities > 0]
+    max_divergence_spike = float(np.max(positive_velocities)) if len(positive_velocities) > 0 else 0.0
+    if max_divergence_spike > 0.3:
         return "catastrophic"
 
     positive_frac = float(np.mean(velocities > 0.001))

@@ -18,8 +18,9 @@ class ExperimentConfig:
 
     # Tree structure
     mode: str = "branching"  # linear | branching | cyclic
-    max_depth: int = 10
+    max_depth: int = 5
     max_branches_per_node: int = 3
+    max_nodes: int = 50
     revisitation_probability: float = 0.2
     termination_override: bool = True
 

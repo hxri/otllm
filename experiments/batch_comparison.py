@@ -31,6 +31,18 @@ from otllm.storage.database import Database
 
 console = Console()
 
+
+def _format_eta(seconds: float) -> str:
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    if seconds < 3600:
+        m, s = divmod(int(seconds), 60)
+        return f"{m}m {s}s"
+    h, rem = divmod(int(seconds), 3600)
+    m, s = divmod(rem, 60)
+    return f"{h}h {m}m {s}s"
+
+
 # ---------------------------------------------------------------------------
 # Prompts — chosen to cover different emotional/cognitive domains
 # ---------------------------------------------------------------------------
@@ -52,6 +64,7 @@ class ExperimentDef:
     mode: str = "branching"
     max_depth: int = 5
     max_branches: int = 3
+    max_nodes: int = 50
     strategy: str = "recursive"
     anxiety: float = 0.5
     reanchor_blind: bool = True
@@ -133,7 +146,11 @@ def run_batch(experiments: List[ExperimentDef], db_path: str) -> None:
     db = Database(db_path)
     results = []
 
-    console.print(f"[bold]Running {len(experiments)} experiments[/bold]\n")
+    total = len(experiments)
+    console.print(f"[bold]Running {total} experiments[/bold]\n")
+
+    batch_start = time.time()
+    elapsed_times: List[float] = []
 
     for i, exp in enumerate(experiments):
         prompt = PROMPTS[exp.prompt_key]
@@ -143,6 +160,7 @@ def run_batch(experiments: List[ExperimentDef], db_path: str) -> None:
             mode=exp.mode,
             max_depth=exp.max_depth,
             max_branches_per_node=exp.max_branches,
+            max_nodes=exp.max_nodes,
             induction_strategy=exp.strategy,
             anxiety_intensity=exp.anxiety,
             reanchor_enabled=exp.reanchor_enabled,
@@ -150,13 +168,14 @@ def run_batch(experiments: List[ExperimentDef], db_path: str) -> None:
             db_path=db_path,
         )
 
-        console.print(f"[cyan][{i+1}/{len(experiments)}][/cyan] {exp.name} ({exp.category})")
+        console.print(f"[cyan][{i+1}/{total}][/cyan] {exp.name} ({exp.category})")
         t0 = time.time()
 
         try:
             runner = ExperimentRunner(config, llm, embedder, db)
             result = runner.run()
             elapsed = time.time() - t0
+            elapsed_times.append(elapsed)
             m = result.aggregate_metrics
             results.append({
                 "name": exp.name,
@@ -173,10 +192,22 @@ def run_batch(experiments: List[ExperimentDef], db_path: str) -> None:
                 "elapsed": elapsed,
                 "status": "ok",
             })
-            console.print(f"  -> {m.get('drift_regime', '?').upper()} | drift={m.get('final_drift', 0):.3f} | {elapsed:.0f}s\n")
+            done = i + 1
+            avg_time = sum(elapsed_times) / len(elapsed_times)
+            remaining = (total - done) * avg_time
+            eta_str = _format_eta(remaining)
+            console.print(
+                f"  -> {m.get('drift_regime', '?').upper()} | drift={m.get('final_drift', 0):.3f} | {elapsed:.0f}s"
+                f"  [dim]({done}/{total} done, ETA: {eta_str})[/dim]\n"
+            )
         except Exception as e:
+            elapsed = time.time() - t0
+            elapsed_times.append(elapsed)
             console.print(f"  [red]FAILED: {e}[/red]\n")
             results.append({"name": exp.name, "category": exp.category, "status": "failed", "error": str(e)})
+
+    total_elapsed = time.time() - batch_start
+    console.print(f"[bold]Batch completed in {_format_eta(total_elapsed)}[/bold]\n")
 
     # Print summary table
     console.print("\n")
