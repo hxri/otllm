@@ -223,6 +223,6 @@ class CyclicGraphStrategy(BranchingStrategy):
         )
         result, thought, context = self._generate_single_continuation(llm, node, prompt)
         child = self._make_child_node(node, 0, thought, context, result)
-
-        tree.add_revisit_edge(child.id, target.id)
+        # Defer edge registration until the child has been inserted into tree.nodes.
+        setattr(child, "_pending_revisit_target_id", target.id)
         return [child]

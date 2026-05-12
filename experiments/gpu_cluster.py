@@ -17,6 +17,8 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import os
+import sqlite3
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -29,6 +31,49 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 from rich.table import Table
 
 console = Console()
+
+
+def scoped_experiment_name(exp_name: str, base_name: str) -> str:
+    return f"{exp_name}::{base_name}"
+
+
+def load_completed_experiments(db_path: str, exp_name: str) -> set[str]:
+    """Return base experiment names already completed for this exp_name scope."""
+    if not os.path.exists(db_path):
+        return set()
+
+    prefix = f"{exp_name}::%"
+    con = sqlite3.connect(db_path)
+    try:
+        cur = con.cursor()
+        rows = cur.execute(
+            """
+            WITH latest AS (
+                SELECT e1.name, e1.status
+                FROM experiments e1
+                JOIN (
+                    SELECT name, MAX(created_at) AS max_created
+                    FROM experiments
+                    WHERE name LIKE ?
+                    GROUP BY name
+                ) e2
+                ON e1.name = e2.name AND e1.created_at = e2.max_created
+            )
+            SELECT name
+            FROM latest
+            WHERE status = 'completed'
+            """,
+            (prefix,),
+        ).fetchall()
+    finally:
+        con.close()
+
+    completed = set()
+    scope_prefix = f"{exp_name}::"
+    for (full_name,) in rows:
+        if full_name.startswith(scope_prefix):
+            completed.add(full_name[len(scope_prefix):])
+    return completed
 
 
 def _format_eta(seconds: float) -> str:
@@ -114,6 +159,8 @@ def run_single_experiment(
     vllm_url: str,
     db_path: str,
     model_name: str,
+    exp_name: str,
+    embedder_device: str,
 ) -> Dict:
     from otllm.config import ExperimentConfig
     from otllm.engine.runner import ExperimentRunner
@@ -122,7 +169,7 @@ def run_single_experiment(
     from otllm.storage.database import Database
 
     config = ExperimentConfig(
-        name=exp.name,
+        name=scoped_experiment_name(exp_name, exp.name),
         prompt=PROMPTS[exp.prompt_key],
         model_name=model_name,
         mode=exp.mode,
@@ -137,7 +184,7 @@ def run_single_experiment(
     )
 
     llm = VLLMBackend(base_url=vllm_url, model=model_name, enable_thinking=True)
-    embedder = SentenceTransformerEmbedder()
+    embedder = SentenceTransformerEmbedder(device=embedder_device)
     db = Database(db_path)
 
     t0 = time.time()
@@ -176,8 +223,8 @@ def run_single_experiment(
 
 
 def _worker(args):
-    exp, vllm_url, db_path, model_name = args
-    return run_single_experiment(exp, vllm_url, db_path, model_name)
+    exp, vllm_url, db_path, model_name, exp_name, embedder_device = args
+    return run_single_experiment(exp, vllm_url, db_path, model_name, exp_name, embedder_device)
 
 
 def run_parallel(
@@ -185,11 +232,13 @@ def run_parallel(
     gpu_urls: List[str],
     db_path: str,
     model_name: str,
+    exp_name: str,
+    embedder_device: str,
 ) -> List[Dict]:
     tasks = []
     for i, exp in enumerate(experiments):
         url = gpu_urls[i % len(gpu_urls)]
-        tasks.append((exp, url, db_path, model_name))
+        tasks.append((exp, url, db_path, model_name, exp_name, embedder_device))
 
     results = []
     total = len(tasks)
@@ -308,6 +357,9 @@ if __name__ == "__main__":
     parser.add_argument("--base-port", type=int, default=8000, help="First vLLM server port")
     parser.add_argument("--model", type=str, default="Qwen/Qwen3-4B", help="Model name in vLLM")
     parser.add_argument("--db", type=str, default="otllm_parallel.db", help="Database path")
+    parser.add_argument("--exp-name", type=str, default="default", help="Experiment namespace within shared DB")
+    parser.add_argument("--resume", action="store_true", help="Skip already completed experiments for this --exp-name")
+    parser.add_argument("--embedder-device", type=str, default="cpu", help="Sentence-transformer device: cpu or cuda")
     parser.add_argument("--category", type=str, default=None,
                         help="Run only: blind_vs_informed, tree_mode, anxiety_dose, strategy, depth_scaling")
     parser.add_argument("--quick", action="store_true", help="Run 4 experiments (1 per GPU) for smoke test")
@@ -328,12 +380,28 @@ if __name__ == "__main__":
         console.print("[red]No experiments matched filter.[/red]")
         sys.exit(1)
 
+    skipped = 0
+    if args.resume:
+        completed = load_completed_experiments(args.db, args.exp_name)
+        if completed:
+            before = len(experiments)
+            experiments = [e for e in experiments if e.name not in completed]
+            skipped = before - len(experiments)
+
     total_est_minutes = len(experiments) * 8 / args.gpus / 60
     console.print(f"[bold]OTllm Parallel Batch[/bold]")
+    console.print(f"  Exp Name: {args.exp_name}")
     console.print(f"  GPUs: {args.gpus} ({', '.join(gpu_urls)})")
+    console.print(f"  Embedder device: {args.embedder_device}")
     console.print(f"  Experiments: {len(experiments)}")
+    if args.resume:
+        console.print(f"  Resume: enabled (skipping {skipped} completed)")
     console.print(f"  Estimated time: ~{total_est_minutes:.0f} min")
     console.print()
 
-    results = run_parallel(experiments, gpu_urls, args.db, args.model)
+    if not experiments:
+        console.print("[green]Nothing to run. All experiments for this exp name are already completed.[/green]")
+        sys.exit(0)
+
+    results = run_parallel(experiments, gpu_urls, args.db, args.model, args.exp_name, args.embedder_device)
     print_results(results)
